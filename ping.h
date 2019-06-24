@@ -38,7 +38,10 @@ char	 sendbuf[BUFSIZE];/*对这个缓冲区内容的更改结果，作为生成�
 float rttmatrix[BUFSIZ];
 int pingtimes; /* -c 参数，ping的次数*/
 int quietmode = 0; /* 0关闭安静模式，1开启安静模式*/
-int time_lag = 0; /* -i 时间间隔*/
+int time_lag; /* -i 时间间隔*/
+int ttlcount; /* -t time to live */
+int broadcast; /* -b */
+int justnumber; /* -n */
 
 int    datalen;	/* #bytes of data, following ICMP header */
 char	*host;
@@ -59,6 +62,7 @@ void	 readloop(void);
 void	 sig_alrm(int);
 void	 tv_sub(struct timeval *, struct timeval *);
 void   Stop();
+void   help();
 
 char * Sock_ntop_host(const struct sockaddr *sa, socklen_t salen);
 struct addrinfo* host_serv(const char *host, const char *serv, int family, int socktype);

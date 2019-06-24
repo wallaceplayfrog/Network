@@ -7,6 +7,7 @@ struct proto	proto_v6 = { proc_v6, send_v6, NULL, NULL, 0, IPPROTO_ICMPV6 };
 #endif
 
 int	datalen = 56;		/* data that goes with ICMP echo request */
+int maxdatalen = 65507;
 
 int main(int argc, char **argv)
 {
@@ -14,30 +15,24 @@ int main(int argc, char **argv)
         struct addrinfo	*ai;
 
         opterr = 0;		/* don't want getopt() writing to stderr */
-        while ( (c = getopt(argc, argv, "vhqc:i:")) != -1) {
+        while ( (c = getopt(argc, argv, "vhbt:qc:i:s:n")) != -1) {
                 switch (c) {
                 case 'v':
                         verbose++;
                         break;
 
                 case 'h':
-                        printf("Usage: ping \
-[-aAbBdDfhLnOqrRUvV64] [-c count] [-i interval] [-I interface]\n \
-\t\t[-m mark] [-M pmtudisc_option] [-l preload] [-p pattern] [-Q tos]\n \
-\t\t[-s packetsize] [-S sndbuf] [-t ttl] [-T timestamp_option]\n \
-\t\t[-w deadline] [-W timeout] [hop1 ...] destination\n\
-Usage: ping -6 \
-[-aAbBdDfhLnOqrRUvV] [-c count] [-i interval] [-I interface]\n \
-\t\t[-l preload] [-m mark] [-M pmtudisc_option]\n \
-\t\t[-N nodeinfo_option] [-p pattern] [-Q tclass] [-s packetsize]\n \
-\t\t[-S sndbuf] [-t ttl] [-T timestamp_option] [-w deadline]\n \
-\t\t[-W timeout] destination\n");
+                        help();
                         break;
-                /*
                 case 'b':
-                        printf("bbbbbbbb");
+                        broadcast = 1;
                         break;
-                */
+                case 't':
+                        ttlcount = atoi(optarg);
+                        if (ttlcount < 1)
+                                err_quit("错误的输入");
+                        printf("time to live %d\n", ttlcount);
+                        break;
                 case 'c':
                         pingtimes = atoi(optarg);
                         if (pingtimes < 0)
@@ -54,6 +49,16 @@ Usage: ping -6 \
                         printf("quiet mode. ctrl+c to stop\n");
                         quietmode = 1;
                         break;
+                case 's':
+                        datalen = atoi(optarg);
+                        if (datalen < 0)
+                                err_quit("错误的输入");
+                        if (datalen > maxdatalen)
+                                err_quit("packet size %d is too large. Maximum is %d", datalen, maxdatalen);
+                        break;
+                case 'n':
+                        justnumber = 1;
+                        break;
                 case '?':
                         err_quit("unrecognized option: %c", c);
                 }
@@ -68,7 +73,8 @@ Usage: ping -6 \
         signal(SIGALRM, sig_alrm); //为SIGALRM建立信号处理程序
 /*这里开始处理主机名参数*/
         ai = host_serv(host, NULL, 0, 0); /*addrinfo结构链表*/
-
+        if (broadcast)
+                printf("WARNING: pinging broadcast address\n");
         printf("ping %s (%s): %d data bytes\n", ai->ai_canonname,
                    Sock_ntop_host(ai->ai_addr, ai->ai_addrlen), datalen);
 
@@ -92,6 +98,20 @@ Usage: ping -6 \
         readloop();
 
         exit(0);
+}
+
+void help(){
+        printf("Usage: ping \
+[-aAbBdDfhLnOqrRUvV64] [-c count] [-i interval] [-I interface]\n \
+\t\t[-m mark] [-M pmtudisc_option] [-l preload] [-p pattern] [-Q tos]\n \
+\t\t[-s packetsize] [-S sndbuf] [-t ttl] [-T timestamp_option]\n \
+\t\t[-w deadline] [-W timeout] [hop1 ...] destination\n\
+Usage: ping -6 \
+[-aAbBdDfhLnOqrRUvV] [-c count] [-i interval] [-I interface]\n \
+\t\t[-l preload] [-m mark] [-M pmtudisc_option]\n \
+\t\t[-N nodeinfo_option] [-p pattern] [-Q tclass] [-s packetsize]\n \
+\t\t[-S sndbuf] [-t ttl] [-T timestamp_option] [-w deadline]\n \
+\t\t[-W timeout] destination\n");
 }
 
 /*中断并输出汇总信息*/
@@ -122,6 +142,7 @@ proc_v4(char *ptr, ssize_t len, struct timeval *tvrecv)
         struct ip		*ip;
         struct icmp		*icmp;
         struct timeval	*tvsend;
+        char *str, sub[30];
 
         /*求ip报头长度，即ip报头长度标志乘4，头长度指明头中包含的4字节
          *的个数。可接受的最小值是5，最大值是15*/
@@ -142,17 +163,19 @@ proc_v4(char *ptr, ssize_t len, struct timeval *tvrecv)
                 tv_sub(tvrecv, tvsend);/*接收和发送的时间差*/
                 rtt = tvrecv->tv_sec * 1000.0 + tvrecv->tv_usec / 1000.0;/*以毫秒为单位计算rtt*/
 
-                
-
                 /*显示相关信息*/
-                if (quietmode != 1){
-                        printf("%d bytes from %s: seq=%u, ttl=%d, rtt=%.3f ms\n",
+                if (!quietmode){
+                        if (justnumber)
+                                printf("%d bytes : seq=%u, ttl=%d, rtt=%.3f ms\n",
+                                        icmplen, icmp->icmp_seq, ip->ip_ttl, rtt);
+                        else
+                                printf("%d bytes from %s: seq=%u, ttl=%d, rtt=%.3f ms\n",
                                         icmplen, Sock_ntop_host(pr->sarecv, pr->salen),
                                         icmp->icmp_seq, ip->ip_ttl, rtt);
                         
-                        rttmatrix[icmp->icmp_seq] = rtt;                
-                        nrecv = icmp->icmp_seq + 1; // 统计接收数
                 }
+                rttmatrix[icmp->icmp_seq] = rtt;                
+                nrecv = icmp->icmp_seq + 1; // 统计接收数
 
         } else if (verbose) {
                 printf("  %d bytes from %s: type = %d, code = %d\n",
@@ -293,6 +316,7 @@ readloop(void)
         socklen_t		len;
         ssize_t			n;
         struct timeval	tval;
+        int yes = 1;
         /*创建套接口*/
         sockfd = socket(pr->sasend->sa_family, SOCK_RAW, pr->icmpproto);
         setuid(getuid());		/* don't need special permissions any more */
@@ -300,6 +324,13 @@ readloop(void)
         size = 60 * 1024;       /* OK if setsockopt fails */
         //设置套接口缓冲区大小
         setsockopt(sockfd, SOL_SOCKET, SO_RCVBUF, &size, sizeof(size));
+
+        /* -t  ******************** */
+        if (ttlcount)
+                setsockopt(sockfd,IPPROTO_IP, IP_TTL, &ttlcount, sizeof(ttlcount));
+        /* -b */
+        if (broadcast)
+                setsockopt(sockfd, SOL_SOCKET, SO_BROADCAST, &yes, sizeof(yes));
 
         sig_alrm(SIGALRM);		/*发送第一个分组 send first packet */
 
@@ -321,7 +352,7 @@ readloop(void)
                 /*中断*/
                 signal(SIGINT, Stop);
                 /* -c */
-                if (pingtimes != 0)
+                if (pingtimes)
                         if (nrecv == pingtimes)
                                 Stop();
         }
@@ -333,7 +364,7 @@ sig_alrm(int signo)
         (*pr->fsend)();
 
         /* -i */
-        if (time_lag != 0){
+        if (time_lag){
                 alarm(time_lag);
                 return;
         }
