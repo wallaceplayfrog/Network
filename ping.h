@@ -38,11 +38,18 @@ char	 sendbuf[BUFSIZE];/*对这个缓冲区内容的更改结果，作为生成�
 float rttmatrix[BUFSIZ];
 int pingtimes; /* -c 参数，ping的次数*/
 int quietmode = 0; /* 0关闭安静模式，1开启安静模式*/
-int time_lag; /* -i 时间间隔*/
+float time_lag = 1; /* -i 时间间隔*/
 int ttlcount; /* -t time to live */
 int broadcast; /* -b */
 int justnumber; /* -n */
 int sodebug; /* -d */
+int deadline; /* -w */
+int sndbuf; /* -S */
+int time_out; /* -W */
+int flood; /* -f */
+int perload = 1; /* -l */
+int audio; /* -a */
+int auto_time; /* -A */
 
 int    datalen;	/* #bytes of data, following ICMP header */
 char	*host;

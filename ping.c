@@ -15,7 +15,7 @@ int main(int argc, char **argv)
         struct addrinfo	*ai;
 
         opterr = 0;		/* don't want getopt() writing to stderr */
-        while ( (c = getopt(argc, argv, "vhbt:qc:i:s:nd")) != -1) {
+        while ( (c = getopt(argc, argv, "vhbt:qc:i:s:ndw:S:W:fl:aA")) != -1) {
                 switch (c) {
                 case 'v':
                         verbose++;
@@ -30,20 +30,20 @@ int main(int argc, char **argv)
                 case 't':
                         ttlcount = atoi(optarg);
                         if (ttlcount < 1)
-                                err_quit("错误的输入");
+                                err_quit("wrong input");
                         printf("time to live %d\n", ttlcount);
                         break;
                 case 'c':
                         pingtimes = atoi(optarg);
                         if (pingtimes < 0)
-                                err_quit("错误的输入");
+                                err_quit("wrong input");
                         printf("ping %d times\n", pingtimes);
                         break;
                 case 'i':
-                        time_lag = atoi(optarg);
-                        if (time_lag < 0)
-                                err_quit("错误的输入");
-                        printf("\n时间间隔 %d s\n", time_lag);
+                        time_lag = atof(optarg);
+                        if (time_lag < 0.0)
+                                err_quit("wrong input");
+                        printf("time lag %.3f s\n", time_lag);
                         break;
                 case 'q':
                         printf("quiet mode. ctrl+c to stop\n");
@@ -52,7 +52,7 @@ int main(int argc, char **argv)
                 case 's':
                         datalen = atoi(optarg);
                         if (datalen < 0)
-                                err_quit("错误的输入");
+                                err_quit("wrong input");
                         if (datalen > maxdatalen)
                                 err_quit("packet size %d is too large. Maximum is %d", datalen, maxdatalen);
                         break;
@@ -62,6 +62,32 @@ int main(int argc, char **argv)
                 case 'd':
                         sodebug = 1;
                         break;
+                case 'w':
+                        deadline = atoi(optarg);
+                        if (deadline < 0)
+                                err_quit("wrong input");
+                        printf("deadline %d s\n", deadline);
+                        break;
+                case 'W':
+                        time_out = atoi(optarg);
+                        break;
+                case 'S':
+                        sndbuf = atoi(optarg);
+                        break;  
+                case 'f':
+                        flood = 1;
+                        break;    
+                case 'l':
+                        perload = atoi(optarg);
+                        if (perload < 1 || perload > 65536)
+                                err_quit("bad preload value, should be 1..65536");
+                        break; 
+                case 'a':
+                        audio = 1;
+                        break;  
+                case 'A':
+                        auto_time = 1;
+                        break;      
                 case '?':
                         err_quit("unrecognized option: %c", c);
                 }
@@ -337,9 +363,17 @@ readloop(void)
         /* -d */
         if (sodebug)
                 setsockopt(sockfd, SOL_SOCKET, SO_DEBUG, &yes, yes);
-
-        sig_alrm(SIGALRM);		/*发送第一个分组 send first packet */
-
+        /* -S */
+        if (sndbuf)
+                setsockopt(sockfd, SOL_SOCKET, SO_SNDBUF, &sndbuf, sndbuf);
+        /* -l */
+        while (perload > 0){
+                if (audio)
+                        printf("\a");
+                sig_alrm(SIGALRM);		/*发送第一个分组 send first packet */  
+                perload -= 1;
+        }
+       
         //读取返回给ICMP原始套接口的每个分组
         for ( ; ; ) {
                 len = pr->salen;
@@ -354,6 +388,8 @@ readloop(void)
                 //记录收到分组的时间
                 gettimeofday(&tval, NULL);
                 //调用proc来处理这些分组
+                if (audio)
+                        printf("\a");
                 (*pr->fproc)(recvbuf, n, &tval);
                 /*中断*/
                 signal(SIGINT, Stop);
@@ -361,20 +397,47 @@ readloop(void)
                 if (pingtimes)
                         if (nrecv == pingtimes)
                                 Stop();
+                /* -w */
+                if (deadline)
+                        if (nrecv * time_lag > deadline)
+                                Stop();
+                /* -W */
+                if (time_out)
+                        if (nrecv * time_lag * 1000 > time_out)
+                                Stop();
         }
 }
 
 void
 sig_alrm(int signo)
 {
+        struct itimerval it;
+        memset(&it ,0x00,sizeof (it));
+        it.it_interval.tv_sec = 1;
+        it.it_interval.tv_usec = 0;
+        it.it_value.tv_sec = 1;
+        it.it_value.tv_usec = 0;
         (*pr->fsend)();
 
         /* -i */
-        if (time_lag){
-                alarm(time_lag);
+        if (time_lag != 1){
+                it.it_interval.tv_sec = 0;
+                it.it_interval.tv_usec = time_lag * 1000000;
+                it.it_value.tv_sec = 0;
+                it.it_value.tv_usec = time_lag * 1000000;
+                setitimer(ITIMER_REAL, &it, NULL);
                 return;
         }
-        alarm(1);
+        /* -f */
+        if (flood || auto_time){
+                it.it_interval.tv_sec = 0;
+                it.it_interval.tv_usec = 10000;
+                it.it_value.tv_sec = 0;
+                it.it_value.tv_usec = 10000;
+                setitimer(ITIMER_REAL, &it, NULL);
+                return;
+        }
+        setitimer(ITIMER_REAL, &it, NULL);
         return;         /* 可能会中断接收probably interrupts recvfrom() */
 }
 
