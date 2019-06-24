@@ -42,6 +42,7 @@ int time_lag; /* -i 时间间隔*/
 int ttlcount; /* -t time to live */
 int broadcast; /* -b */
 int justnumber; /* -n */
+int sodebug; /* -d */
 
 int    datalen;	/* #bytes of data, following ICMP header */
 char	*host;

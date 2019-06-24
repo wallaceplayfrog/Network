@@ -15,7 +15,7 @@ int main(int argc, char **argv)
         struct addrinfo	*ai;
 
         opterr = 0;		/* don't want getopt() writing to stderr */
-        while ( (c = getopt(argc, argv, "vhbt:qc:i:s:n")) != -1) {
+        while ( (c = getopt(argc, argv, "vhbt:qc:i:s:nd")) != -1) {
                 switch (c) {
                 case 'v':
                         verbose++;
@@ -58,6 +58,9 @@ int main(int argc, char **argv)
                         break;
                 case 'n':
                         justnumber = 1;
+                        break;
+                case 'd':
+                        sodebug = 1;
                         break;
                 case '?':
                         err_quit("unrecognized option: %c", c);
@@ -142,7 +145,6 @@ proc_v4(char *ptr, ssize_t len, struct timeval *tvrecv)
         struct ip		*ip;
         struct icmp		*icmp;
         struct timeval	*tvsend;
-        char *str, sub[30];
 
         /*求ip报头长度，即ip报头长度标志乘4，头长度指明头中包含的4字节
          *的个数。可接受的最小值是5，最大值是15*/
@@ -166,11 +168,12 @@ proc_v4(char *ptr, ssize_t len, struct timeval *tvrecv)
                 /*显示相关信息*/
                 if (!quietmode){
                         if (justnumber)
-                                printf("%d bytes : seq=%u, ttl=%d, rtt=%.3f ms\n",
-                                        icmplen, icmp->icmp_seq, ip->ip_ttl, rtt);
-                        else
-                                printf("%d bytes from %s: seq=%u, ttl=%d, rtt=%.3f ms\n",
+                                printf("%d bytes from %s : seq=%u, ttl=%d, rtt=%.3f ms\n",
                                         icmplen, Sock_ntop_host(pr->sarecv, pr->salen),
+                                        icmp->icmp_seq, ip->ip_ttl, rtt);
+                        else
+                                printf("%d bytes from %s(%s) : seq=%u, ttl=%d, rtt=%.3f ms\n",
+                                        icmplen, Sock_ntop_host(pr->sarecv, pr->salen), Sock_ntop_host(pr->sarecv, pr->salen),
                                         icmp->icmp_seq, ip->ip_ttl, rtt);
                         
                 }
@@ -331,6 +334,9 @@ readloop(void)
         /* -b */
         if (broadcast)
                 setsockopt(sockfd, SOL_SOCKET, SO_BROADCAST, &yes, sizeof(yes));
+        /* -d */
+        if (sodebug)
+                setsockopt(sockfd, SOL_SOCKET, SO_DEBUG, &yes, yes);
 
         sig_alrm(SIGALRM);		/*发送第一个分组 send first packet */
 
@@ -368,7 +374,6 @@ sig_alrm(int signo)
                 alarm(time_lag);
                 return;
         }
-        
         alarm(1);
         return;         /* 可能会中断接收probably interrupts recvfrom() */
 }
