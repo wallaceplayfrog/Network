@@ -362,10 +362,10 @@ readloop(void)
                 setsockopt(sockfd, SOL_SOCKET, SO_BROADCAST, &yes, sizeof(yes));
         /* -d */
         if (sodebug)
-                setsockopt(sockfd, SOL_SOCKET, SO_DEBUG, &yes, yes);
+                setsockopt(sockfd, SOL_SOCKET, SO_DEBUG, &yes, sizeof(yes));
         /* -S */
         if (sndbuf)
-                setsockopt(sockfd, SOL_SOCKET, SO_SNDBUF, &sndbuf, sndbuf);
+                setsockopt(sockfd, SOL_SOCKET, SO_SNDBUF, &sndbuf, sizeof(sndbuf));
         /* -l */
         while (perload > 0){
                 if (audio)
@@ -421,10 +421,10 @@ sig_alrm(int signo)
 
         /* -i */
         if (time_lag != 1){
-                it.it_interval.tv_sec = 0;
-                it.it_interval.tv_usec = time_lag * 1000000;
-                it.it_value.tv_sec = 0;
-                it.it_value.tv_usec = time_lag * 1000000;
+                it.it_interval.tv_sec = (int)time_lag/1;
+                it.it_interval.tv_usec = (time_lag-(int)time_lag/1)  * 1000000;
+                it.it_value.tv_sec = (int)time_lag/1;
+                it.it_value.tv_usec = (time_lag-(int)time_lag/1)  * 1000000;
                 setitimer(ITIMER_REAL, &it, NULL);
                 return;
         }
